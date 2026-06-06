@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamRec — Movie Recommendations</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cinema: {
+              bg:      '#0d0d0d',
+              card:    '#1a1a1a',
+              border:  '#2a2a2a',
+              gold:    '#f5c518',
+              goldDim: '#c9a214',
+              text:    '#e8e8e8',
+              muted:   '#888',
+            }
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { background-color: #0d0d0d; color: #e8e8e8; }
+
+    .card-hover { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+    .card-hover:hover {
+      transform: translateY(-6px) scale(1.02);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(245,197,24,0.15);
+    }
+
+    .star-filled { color: #f5c518; }
+    .star-empty  { color: #3a3a3a; }
+
+    @keyframes shimmer {
+      0%   { background-position: -800px 0; }
+      100% { background-position: 800px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+      background-size: 800px 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .slide-up { animation: slideUp 0.5s ease forwards; }
+
+    .genre-badge {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      background: rgba(245,197,24,0.12);
+      color: #f5c518;
+      border: 1px solid rgba(245,197,24,0.25);
+      white-space: nowrap;
+    }
+
+    .genre-chip {
+      cursor: pointer;
+      padding: 8px 16px;
+      border-radius: 9999px;
+      border: 1.5px solid #2a2a2a;
+      background: #1a1a1a;
+      color: #888;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.18s ease;
+      user-select: none;
+    }
+    .genre-chip:hover {
+      border-color: rgba(245,197,24,0.5);
+      color: #e8e8e8;
+      background: rgba(245,197,24,0.06);
+    }
+    .genre-chip.selected {
+      border-color: #f5c518;
+      background: rgba(245,197,24,0.15);
+      color: #f5c518;
+      box-shadow: 0 0 12px rgba(245,197,24,0.15);
+    }
+
+    .rate-card {
+      background: #1a1a1a;
+      border: 1.5px solid #2a2a2a;
+      border-radius: 16px;
+      overflow: hidden;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .rate-card.liked {
+      border-color: #22c55e;
+      box-shadow: 0 0 16px rgba(34,197,94,0.2);
+    }
+    .rate-card.disliked {
+      border-color: #ef4444;
+      box-shadow: 0 0 16px rgba(239,68,68,0.12);
+      opacity: 0.55;
+    }
+
+    .rate-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: 1.5px solid #2a2a2a;
+      background: #111;
+      cursor: pointer;
+      font-size: 1.1rem;
+      transition: all 0.15s ease;
+    }
+    .rate-btn:hover { transform: scale(1.12); }
+    .rate-btn.thumb-up.active  { background: rgba(34,197,94,0.2);  border-color: #22c55e; }
+    .rate-btn.thumb-down.active { background: rgba(239,68,68,0.15); border-color: #ef4444; }
+
+    .spinner {
+      border: 3px solid #2a2a2a;
+      border-top-color: #f5c518;
+      border-radius: 50%;
+      width: 40px; height: 40px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .poster-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3.5rem;
+      font-weight: 800;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      user-select: none;
+      color: rgba(255,255,255,0.25);
+    }
+    .poster-placeholder-sm {
+      font-size: 2rem;
+    }
+
+    .step-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #2a2a2a;
+      transition: background 0.3s ease, transform 0.3s ease;
+    }
+    .step-dot.active { background: #f5c518; transform: scale(1.3); }
+    .step-dot.done   { background: #c9a214; }
+
+    ::-webkit-scrollbar       { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0d0d0d; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+    input:focus, button:focus { outline: none; }
+
+    .movie-poster {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .poster-wrap {
+      position: relative;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen font-sans">
+
+  <nav class="fixed top-0 left-0 right-0 z-50 bg-cinema-bg/90 backdrop-blur border-b border-cinema-border">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="font-extrabold text-xl tracking-tight text-cinema-text">Stream<span class="text-cinema-gold">Rec</span></span>
+        <span class="hidden sm:inline text-cinema-muted text-xs ml-2 border border-cinema-border rounded px-2 py-0.5">TMDB Powered</span>
+      </div>
+      <div class="relative">
+        <input id="navSearch" type="text" placeholder="Search movies…"
+          class="bg-cinema-card border border-cinema-border rounded-lg px-4 py-1.5 text-sm text-cinema-text placeholder-cinema-muted w-48 sm:w-64 focus:border-cinema-gold transition-colors"
+        />
+        <button onclick="doSearch()" class="absolute right-2 top-1/2 -translate-y-1/2 text-cinema-muted hover:text-cinema-gold transition-colors text-sm">⌕</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="pt-20 min-h-screen">
+
+    <div id="stepProgress" class="flex justify-center gap-2 pt-8 pb-2">
+      <div class="step-dot active" id="dot0"></div>
+      <div class="step-dot" id="dot1"></div>
+      <div class="step-dot" id="dot2"></div>
+    </div>
+
+    <section id="step1" class="max-w-3xl mx-auto px-6 py-8 slide-up">
+      <div class="text-center mb-10">
+        <div class="inline-flex items-center gap-2 bg-cinema-card border border-cinema-border rounded-full px-4 py-1.5 mb-5 text-xs text-cinema-muted">
+          <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+          TF-IDF · TMDB · 20,000+ Movies
+        </div>
+        <h1 class="text-4xl sm:text-5xl font-extrabold text-cinema-text leading-tight mb-3">
+          What do you like<br/><span class="text-cinema-gold">to watch?</span>
+        </h1>
+        <p class="text-cinema-muted text-base">Pick your favourite genres to get started.</p>
+      </div>
+
+      <div id="genreGrid" class="flex flex-wrap justify-center gap-3 mb-10"></div>
+
+      <div class="flex justify-center">
+        <button id="continueBtn" onclick="goToStep2()"
+          class="bg-cinema-gold text-black font-bold px-10 py-3.5 rounded-xl text-sm transition-all
+                 opacity-40 cursor-not-allowed hover:shadow-lg hover:shadow-cinema-gold/20"
+          disabled>
+          Continue →
+        </button>
+      </div>
+    </section>
+
+    <section id="step2" class="hidden max-w-5xl mx-auto px-6 py-8">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-cinema-text mb-2">
+          Rate a few films to <span class="text-cinema-gold">sharpen your picks</span>
+        </h1>
+        <p class="text-cinema-muted text-sm">Thumbs up what you love — or just skip them all.</p>
+      </div>
+
+      <div id="rateGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-8"></div>
+
+      <div class="flex flex-col items-center gap-3">
+        <button onclick="getRecommendations()"
+          class="bg-cinema-gold hover:bg-cinema-goldDim text-black font-bold px-12 py-3.5 rounded-xl text-sm transition-all hover:shadow-lg hover:shadow-cinema-gold/20">
+          Get My Recommendations
+        </button>
+        <button onclick="getRecommendations()" class="text-cinema-muted text-xs hover:text-cinema-text transition-colors underline underline-offset-2">
+          Skip this step
+        </button>
+      </div>
+    </section>
+
+    <div id="loadingState" class="hidden flex-col items-center justify-center py-32 gap-4">
+      <div class="spinner"></div>
+      <p class="text-cinema-muted text-sm">Building your taste profile…</p>
+    </div>
+
+    <div id="errorState" class="hidden text-center py-16 max-w-lg mx-auto px-6">
+      <div class="text-4xl mb-4">⚠️</div>
+      <p id="errorMsg" class="text-red-400 text-lg"></p>
+      <p class="text-cinema-muted text-sm mt-2">Make sure you ran <code class="text-cinema-gold">python pipeline.py</code> first.</p>
+    </div>
+
+    <section id="step3" class="hidden max-w-7xl mx-auto px-6 pb-24">
+
+      <div id="tasteSummary" class="bg-cinema-card border border-cinema-border rounded-2xl p-5 mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 fade-in">
+        <div>
+          <div class="text-cinema-muted text-xs mb-1">Your taste profile</div>
+          <div id="summaryGenres" class="flex flex-wrap gap-1.5 mb-1"></div>
+          <div id="summaryRatings" class="text-cinema-muted text-xs"></div>
+        </div>
+        <button onclick="startOver()"
+          class="shrink-0 border border-cinema-border text-cinema-muted hover:text-cinema-text hover:border-cinema-text px-5 py-2 rounded-xl text-sm transition-all">
+          ← Start Over
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-cinema-text">Your Recommendations</h2>
+        <span id="recCount" class="text-cinema-muted text-sm"></span>
+      </div>
+
+      <div id="recsGrid" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+
+    </section>
+
+    <div id="searchResults" class="hidden max-w-7xl mx-auto px-6 pb-24">
+      <div class="flex items-center justify-between mb-6 pt-8">
+        <h2 class="text-xl font-bold text-cinema-text">Results for "<span id="searchQuery" class="text-cinema-gold"></span>"</h2>
+        <button onclick="closeSearch()" class="text-cinema-muted hover:text-cinema-text text-sm">✕ Close</button>
+      </div>
+      <div id="searchGrid" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+    </div>
+
+  </main>
+
+  <div id="movieModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeModal()"></div>
+    <div class="relative bg-cinema-card border border-cinema-border rounded-2xl w-full max-w-lg shadow-2xl z-10 fade-in overflow-y-auto max-h-[90vh]">
+      <button onclick="closeModal()" class="absolute top-4 right-4 text-cinema-muted hover:text-cinema-text text-lg z-10">✕</button>
+      <div id="modalContent" class="p-8"></div>
+    </div>
+  </div>
+
+  <script>
+  const GENRE_ICONS = {
+    "Action":"⚔️","Adventure":"🗺️","Animation":"🎨","Comedy":"😂",
+    "Crime":"🕵️","Documentary":"🎥","Drama":"🎭","Family":"👨‍👩‍👧",
+    "Fantasy":"🧙","History":"📜","Horror":"👻","Music":"🎵",
+    "Mystery":"🔍","Romance":"💕","Science Fiction":"🚀","Thriller":"🔪",
+    "TV Movie":"📺","War":"💥","Western":"🤠"
+  };
+
+  const PALETTES = [
+    ['#1a1a2e','#16213e'],['#2d1b69','#11998e'],['#434343','#000000'],
+    ['#1d2671','#c33764'],['#0f2027','#2c5364'],['#200122','#6f0000'],
+    ['#0d0d0d','#434343'],['#1a1a2e','#e94560'],['#2c3e50','#3498db'],
+    ['#141e30','#243b55'],['#360033','#0b8793'],['#11001c','#22c1c3'],
+  ];
+
+  function paletteFor(title) {
+    let h = 0;
+    for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) & 0xffffffff;
+    return PALETTES[Math.abs(h) % PALETTES.length];
+  }
+
+  function renderStars(rating, max=5) {
+    const r5 = rating / 2;
+    const full = Math.floor(r5);
+    const half = r5 - full >= 0.5;
+    let html = '';
+    for (let i = 1; i <= max; i++) {
+      if (i <= full) html += '<span class="star-filled">★</span>';
+      else if (i === full+1 && half) html += '<span class="star-filled" style="opacity:0.5">★</span>';
+      else html += '<span class="star-empty">★</span>';
+    }
+    return html;
+  }
+
+  function genreBadges(genres) {
+    return (genres || []).slice(0,3).map(g =>
+      `<span class="genre-badge">${g}</span>`
+    ).join('');
+  }
+
+  function posterHtml(m, height='h-52', charClass='') {
+    if (m.poster_url) {
+      return `<img src="${m.poster_url}" alt="${m.title}" class="movie-poster"
+               onerror="this.parentNode.innerHTML=fallbackPoster('${(m.title[0]||'?').toUpperCase()}','${paletteFor(m.title).join("','")}','${height}','${charClass}')" />`;
+    }
+    const [c1, c2] = paletteFor(m.title);
+    const char = (m.title[0] || '?').toUpperCase();
+    return `<div class="poster-placeholder w-full h-full ${charClass}"
+               style="background: linear-gradient(135deg, ${c1}, ${c2})">${char}</div>`;
+  }
+
+  function fallbackPoster(char, c1, c2, height, charClass) {
+    return `<div class="poster-placeholder w-full h-full ${charClass}"
+               style="background: linear-gradient(135deg, ${c1}, ${c2})">${char}</div>`;
+  }
+
+  function movieCard(m, delay=0) {
+    const year = m.year ? `<span class="text-cinema-muted text-xs ml-1">${m.year}</span>` : '';
+    const rating = m.vote_average || 0;
+    const r5 = (rating / 2).toFixed(1);
+    return `
+    <div class="card-hover bg-cinema-card border border-cinema-border rounded-xl overflow-hidden cursor-pointer fade-in"
+         style="animation-delay:${delay}ms"
+         onclick="showMovieDetail(${m.movie_id})">
+      <div class="poster-wrap h-52 bg-cinema-border">
+        ${posterHtml(m, 'h-52')}
+        <div class="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-cinema-card to-transparent pointer-events-none"></div>
+        ${rating ? `<div class="absolute top-2 right-2 bg-black/60 backdrop-blur rounded px-2 py-0.5 text-cinema-gold text-xs font-bold">★ ${r5}</div>` : ''}
+      </div>
+      <div class="p-4">
+        <h3 class="font-semibold text-cinema-text text-sm leading-snug mb-1 line-clamp-2">${m.title}${year}</h3>
+        <div class="flex flex-wrap gap-1 mb-2">${genreBadges(m.genres)}</div>
+        <div class="text-sm">${renderStars(rating)}</div>
+      </div>
+    </div>`;
+  }
+
+  let selectedGenres = new Set();
+  let ratingState = {};
+  let onboardingMovies = [];
+  let allGenres = [];
+
+  async function loadGenres() {
+    try {
+      const res = await fetch('/api/genres');
+      const data = await res.json();
+      allGenres = data.genres || [];
+    } catch {
+      allGenres = ["Action","Adventure","Animation","Comedy","Crime","Documentary",
+                   "Drama","Family","Fantasy","History","Horror","Music","Mystery",
+                   "Romance","Science Fiction","Thriller","War","Western"];
+    }
+    buildGenreGrid();
+  }
+
+  function buildGenreGrid() {
+    const grid = document.getElementById('genreGrid');
+    grid.innerHTML = allGenres.map(g => `
+      <button class="genre-chip" data-genre="${g}" onclick="toggleGenre(this, '${g.replace(/'/g,"\\'")}')">
+        <span class="mr-1.5">${GENRE_ICONS[g] || '🎬'}</span>${g}
+      </button>
+    `).join('');
+  }
+
+  function toggleGenre(el, genre) {
+    if (selectedGenres.has(genre)) {
+      selectedGenres.delete(genre);
+      el.classList.remove('selected');
+    } else {
+      selectedGenres.add(genre);
+      el.classList.add('selected');
+    }
+    const btn = document.getElementById('continueBtn');
+    if (selectedGenres.size > 0) {
+      btn.disabled = false;
+      btn.classList.remove('opacity-40', 'cursor-not-allowed');
+    } else {
+      btn.disabled = true;
+      btn.classList.add('opacity-40', 'cursor-not-allowed');
+    }
+  }
+
+  async function goToStep2() {
+    setStep(2);
+    const genreParam = [...selectedGenres].join(',');
+    const rateGrid = document.getElementById('rateGrid');
+    rateGrid.innerHTML = Array(8).fill(0).map(() => `<div class="skeleton rounded-2xl h-64"></div>`).join('');
+
+    try {
+      const res = await fetch(`/api/movies/popular?genres=${encodeURIComponent(genreParam)}&n=8`);
+      const data = await res.json();
+      onboardingMovies = data.movies || [];
+      ratingState = {};
+      rateGrid.innerHTML = onboardingMovies.map((m, i) => buildRateCard(m, i)).join('');
+    } catch (e) {
+      rateGrid.innerHTML = `<p class="text-red-400 col-span-full text-center">${e.message}</p>`;
+    }
+  }
+
+  function buildRateCard(m, i) {
+    return `
+    <div class="rate-card fade-in" id="rateCard_${m.movie_id}" style="animation-delay:${i*60}ms">
+      <div class="poster-wrap h-36 bg-cinema-border">
+        ${posterHtml(m, 'h-36', 'poster-placeholder-sm')}
+        <div class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-cinema-card to-transparent pointer-events-none"></div>
+      </div>
+      <div class="p-3">
+        <h3 class="font-semibold text-cinema-text text-xs leading-snug mb-1.5 line-clamp-2">${m.title}
+          ${m.year ? `<span class="text-cinema-muted font-normal">${m.year}</span>` : ''}
+        </h3>
+        <div class="flex flex-wrap gap-1 mb-3">${genreBadges(m.genres)}</div>
+        <div class="flex items-center justify-center gap-3">
+          <button class="rate-btn thumb-up" id="up_${m.movie_id}" onclick="rate(${m.movie_id}, 'liked')" title="Love it">👍</button>
+          <button class="rate-btn thumb-down" id="dn_${m.movie_id}" onclick="rate(${m.movie_id}, 'disliked')" title="Not for me">👎</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function rate(movieId, state) {
+    const prev = ratingState[movieId];
+    if (prev === state) {
+      delete ratingState[movieId];
+      document.getElementById(`up_${movieId}`).classList.remove('active');
+      document.getElementById(`dn_${movieId}`).classList.remove('active');
+      document.getElementById(`rateCard_${movieId}`).className = 'rate-card fade-in';
+    } else {
+      ratingState[movieId] = state;
+      document.getElementById(`up_${movieId}`).classList.toggle('active', state === 'liked');
+      document.getElementById(`dn_${movieId}`).classList.toggle('active', state === 'disliked');
+      document.getElementById(`rateCard_${movieId}`).className = `rate-card fade-in ${state}`;
+    }
+  }
+
+  async function getRecommendations() {
+    showLoading();
+    const liked    = Object.entries(ratingState).filter(([,v]) => v === 'liked').map(([k]) => parseInt(k));
+    const disliked = Object.entries(ratingState).filter(([,v]) => v === 'disliked').map(([k]) => parseInt(k));
+    const shown    = onboardingMovies.map(m => m.movie_id);
+
+    try {
+      const res = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          genres: [...selectedGenres],
+          liked_movies: liked,
+          disliked_movies: [...disliked, ...shown],
+          k: 24,
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      document.getElementById('recCount').textContent = `${data.recommendations.length} picks`;
+      document.getElementById('recsGrid').innerHTML = data.recommendations.map((m, i) => movieCard(m, i * 30)).join('');
+
+      document.getElementById('summaryGenres').innerHTML = [...selectedGenres].map(g =>
+        `<span class="genre-badge">${GENRE_ICONS[g] || '🎬'} ${g}</span>`
+      ).join('');
+
+      document.getElementById('summaryRatings').textContent =
+        liked.length > 0 ? `Based on ${liked.length} film${liked.length > 1 ? 's' : ''} you liked` : 'Based on genre preferences';
+
+      setStep(3);
+    } catch (e) {
+      showError(e.message);
+    }
+  }
+
+  function startOver() {
+    selectedGenres.clear();
+    ratingState = {};
+    onboardingMovies = [];
+    document.querySelectorAll('.genre-chip').forEach(c => c.classList.remove('selected'));
+    const btn = document.getElementById('continueBtn');
+    btn.disabled = true;
+    btn.classList.add('opacity-40', 'cursor-not-allowed');
+    setStep(1);
+  }
+
+  function setStep(n) {
+    document.getElementById('step1').classList.toggle('hidden', n !== 1);
+    document.getElementById('step2').classList.toggle('hidden', n !== 2);
+    document.getElementById('loadingState').classList.toggle('hidden', n !== 'loading');
+    document.getElementById('loadingState').classList.toggle('flex', n === 'loading');
+    document.getElementById('step3').classList.toggle('hidden', n !== 3);
+    document.getElementById('errorState').classList.toggle('hidden', n !== 'error');
+    document.getElementById('stepProgress').classList.toggle('hidden', n === 3 || n === 'loading' || n === 'error');
+
+    if (typeof n === 'number' && n >= 1 && n <= 3) {
+      [0,1,2].forEach(i => {
+        const dot = document.getElementById(`dot${i}`);
+        dot.className = 'step-dot' + (i === n-1 ? ' active' : i < n-1 ? ' done' : '');
+      });
+    }
+    if (n === 3) {
+      document.getElementById('step3').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  function showLoading() {
+    ['step1','step2','step3','errorState','searchResults'].forEach(id =>
+      document.getElementById(id).classList.add('hidden')
+    );
+    document.getElementById('loadingState').classList.remove('hidden');
+    document.getElementById('loadingState').classList.add('flex');
+    document.getElementById('stepProgress').classList.add('hidden');
+  }
+
+  function showError(msg) {
+    document.getElementById('loadingState').classList.add('hidden');
+    document.getElementById('loadingState').classList.remove('flex');
+    document.getElementById('errorMsg').textContent = msg;
+    document.getElementById('errorState').classList.remove('hidden');
+    document.getElementById('stepProgress').classList.add('hidden');
+  }
+
+  async function doSearch() {
+    const q = document.getElementById('navSearch').value.trim();
+    if (!q) return;
+    document.getElementById('searchQuery').textContent = q;
+    showLoading();
+
+    try {
+      const res  = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const grid = document.getElementById('searchGrid');
+      grid.innerHTML = data.results.length === 0
+        ? '<p class="text-cinema-muted col-span-4 text-center py-12">No movies found.</p>'
+        : data.results.map((m, i) => movieCard(m, i * 25)).join('');
+
+      document.getElementById('loadingState').classList.add('hidden');
+      document.getElementById('loadingState').classList.remove('flex');
+      document.getElementById('searchResults').classList.remove('hidden');
+    } catch (e) {
+      showError(e.message);
+    }
+  }
+
+  function closeSearch() {
+    document.getElementById('searchResults').classList.add('hidden');
+    document.getElementById('navSearch').value = '';
+    const inStep3 = !document.getElementById('step3').classList.contains('hidden');
+    if (!inStep3) {
+      setStep(selectedGenres.size > 0 ? (onboardingMovies.length > 0 ? 2 : 1) : 1);
+    } else {
+      document.getElementById('step3').classList.remove('hidden');
+    }
+  }
+
+  document.getElementById('navSearch').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doSearch();
+  });
+
+  async function showMovieDetail(id) {
+    const modal   = document.getElementById('movieModal');
+    const content = document.getElementById('modalContent');
+    content.innerHTML = '<div class="flex justify-center py-8"><div class="spinner"></div></div>';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    try {
+      const res  = await fetch(`/api/movie/${id}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const r5 = (data.vote_average / 2).toFixed(1);
+      const posterEl = data.poster_url
+        ? `<img src="${data.poster_url}" alt="${data.title}" class="w-24 h-32 object-cover rounded-xl shrink-0"
+               onerror="this.outerHTML='<div class=\\'w-24 h-32 rounded-xl flex items-center justify-center text-3xl font-black text-white/30\\' style=\\'background:linear-gradient(135deg,${paletteFor(data.title).join(',')});\\'>${(data.title[0]||'?').toUpperCase()}</div>'">`
+        : (() => {
+            const [c1,c2] = paletteFor(data.title);
+            return `<div class="w-24 h-32 rounded-xl flex items-center justify-center text-3xl font-black text-white/30 shrink-0"
+                       style="background:linear-gradient(135deg,${c1},${c2})">${(data.title[0]||'?').toUpperCase()}</div>`;
+          })();
+
+      content.innerHTML = `
+        <div class="flex gap-6 mb-6">
+          ${posterEl}
+          <div class="flex-1 min-w-0">
+            <h2 class="text-2xl font-bold text-cinema-text leading-snug">${data.title}</h2>
+            ${data.year ? `<p class="text-cinema-muted text-sm mt-1">${data.year}</p>` : ''}
+            <div class="flex flex-wrap gap-1.5 mt-3">${(data.genres||[]).map(g => `<span class="genre-badge">${g}</span>`).join('')}</div>
+          </div>
+        </div>
+        ${data.overview ? `<p class="text-cinema-muted text-sm leading-relaxed mb-5">${data.overview}</p>` : ''}
+        <div class="grid grid-cols-2 gap-4 bg-[#111] rounded-xl p-4 mb-4">
+          <div class="text-center">
+            <div class="text-cinema-gold font-bold text-2xl">${data.vote_average.toFixed(1)}</div>
+            <div class="text-cinema-muted text-xs mt-1">TMDB Score</div>
+          </div>
+          <div class="text-center">
+            <div class="text-cinema-gold font-bold text-2xl">${(data.vote_count||0).toLocaleString()}</div>
+            <div class="text-cinema-muted text-xs mt-1">Votes</div>
+          </div>
+        </div>
+        ${data.cast ? `<p class="text-cinema-muted text-xs mb-1"><span class="text-cinema-text font-medium">Cast:</span> ${data.cast}</p>` : ''}
+        ${data.director ? `<p class="text-cinema-muted text-xs"><span class="text-cinema-text font-medium">Director:</span> ${data.director}</p>` : ''}
+        <div class="mt-4 text-center">${renderStars(data.vote_average)} <span class="text-cinema-muted text-sm ml-2">${r5} / 5</span></div>`;
+    } catch (e) {
+      content.innerHTML = `<p class="text-red-400">${e.message}</p>`;
+    }
+  }
+
+  function closeModal() {
+    document.getElementById('movieModal').classList.add('hidden');
+    document.getElementById('movieModal').classList.remove('flex');
+  }
+
+  loadGenres();
+
+  (async () => {
+    try {
+      const res  = await fetch('/api/health');
+      const data = await res.json();
+      if (!data.artifacts_ready) {
+        showError('Model artifacts not found — run python pipeline.py first.');
+      }
+    } catch {}
+  })();
+  </script>
+</body>
+</html>
