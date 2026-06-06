@@ -1,6 +1,6 @@
 # StreamRec
 
-A content-based movie recommendation engine with a dark cinema UI, real TMDB posters, and a personalised onboarding flow — no account or login required. Works for anyone.
+Movie recommendations without an account. Pick genres, rate a few films, get picks — that's it.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Flask](https://img.shields.io/badge/Flask-2.3%2B-lightgrey)
@@ -11,96 +11,59 @@ A content-based movie recommendation engine with a dark cinema UI, real TMDB pos
 
 ## How it works
 
-1. **Pick genres** — choose what you're in the mood for from a grid of genre chips
-2. **Rate a few films** — thumbs up or skip 6–8 popular movies in your genres
-3. **Get recommendations** — personalised picks with real posters, ratings, and overviews
+1. Pick the genres you're into
+2. Thumbs up or skip 6–8 popular films from those genres
+3. Get a ranked list of recommendations with real posters
 
-No user ID, no account, no history needed. Each session builds a fresh taste profile.
+Recommendations are scored by:
+
+```
+score = 0.45 × content similarity   (TF-IDF cosine vs your liked films)
+      + 0.25 × genre match
+      + 0.30 × quality              (log(vote count) × TMDB rating)
+```
 
 ---
 
-## Architecture
+## Data
 
-```
-  TMDB API (20,000+ movies)
-       │
-       ▼
-  fetch_tmdb.py  ──►  data/tmdb_movies.csv
-                            │
-                            ▼
-                       pipeline.py
-                            │
-              TF-IDF on title + overview +
-              genres + keywords + cast + director
-                            │
-                            ▼
-                       artifacts/
-                            │
-                            ▼
-  User picks genres ──► app.py ──► Scored recommendations
-  User rates movies        │
-                           ▼
-                    templates/index.html
-                    (Tailwind CSS + vanilla JS)
-```
-
-**Scoring formula:**
-
-```
-score = 0.45 × content_similarity
-      + 0.25 × genre_match
-      + 0.30 × quality  (log(vote_count) × vote_average)
-```
-
-Content similarity is computed as cosine similarity between a movie's TF-IDF vector and the average vector of movies the user liked during onboarding.
-
----
-
-## Tech Stack
-
-| Layer | Stack |
-|---|---|
-| Data | TMDB API — 20,000+ movies up to 2025 |
-| Model | TF-IDF (50k features, bigrams, scikit-learn) |
-| Backend | Flask |
-| Frontend | Tailwind CSS (CDN), vanilla JS |
-| Posters | TMDB image CDN |
+Pulls from the [TMDB API](https://www.themoviedb.org/settings/api) — free tier, no credit card. The `fetch_tmdb.py` script downloads ~20,000 movies with overviews, genres, keywords, cast, and directors, then `pipeline.py` builds a TF-IDF model on top of that.
 
 ---
 
 ## Setup
 
-### 1. Get a free TMDB API key
+**1. Get a free TMDB API key**
 
-Register at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) — free, takes about 2 minutes. No credit card.
+Register at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api). Takes about 2 minutes.
 
-### 2. Install dependencies
+**2. Install dependencies**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Fetch the movie database
+**3. Fetch movies** (run once, ~15 minutes)
 
 ```bash
 python fetch_tmdb.py --api-key YOUR_TMDB_API_KEY
 ```
 
-Fetches ~20,000 movies with overviews, genres, keywords, cast, and directors using 10 parallel threads. Takes 10–20 minutes. Saves to `data/tmdb_movies.csv`.
+Saves to `data/tmdb_movies.csv`.
 
-### 4. Build the model
+**4. Build the model** (~1 minute)
 
 ```bash
 python pipeline.py
 ```
 
-Fits TF-IDF on the full corpus and saves artifacts to `artifacts/`. Takes about 1 minute.
+Saves artifacts to `artifacts/`.
 
-### 5. Start the server
+**5. Run**
 
 ```bash
 python app.py
-# → http://localhost:5000
+# http://localhost:5000
 ```
 
 ---
@@ -109,15 +72,14 @@ python app.py
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/` | Main UI |
-| `GET` | `/api/health` | Health check |
-| `GET` | `/api/genres` | All genre names |
+| `GET` | `/api/health` | Status check |
+| `GET` | `/api/genres` | List of genres |
 | `POST` | `/api/recommend` | Get recommendations |
-| `GET` | `/api/movies/popular` | Popular movies by genre |
+| `GET` | `/api/movies/popular` | Popular movies, filterable by genre |
 | `GET` | `/api/search?q=` | Search by title |
-| `GET` | `/api/movie/<id>` | Movie detail |
+| `GET` | `/api/movie/<id>` | Single movie detail |
 
-**POST /api/recommend — request body:**
+**POST /api/recommend**
 
 ```json
 {
@@ -128,8 +90,6 @@ python app.py
 }
 ```
 
-**Response:**
-
 ```json
 {
   "recommendations": [
@@ -139,7 +99,6 @@ python app.py
       "year": "2014",
       "genres": ["Adventure", "Drama", "Sci-Fi"],
       "avg_rating": 8.4,
-      "popularity": 98234,
       "poster_url": "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
       "score": 0.8821
     }
@@ -149,26 +108,24 @@ python app.py
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 StreamRec/
-├── fetch_tmdb.py        # Fetch & cache TMDB movie database
-├── pipeline.py          # Build TF-IDF content model
-├── app.py               # Flask API + recommendation logic
+├── fetch_tmdb.py       # Download movie data from TMDB
+├── pipeline.py         # Build TF-IDF model
+├── app.py              # Flask server
 ├── templates/
-│   └── index.html       # Single-page app (Tailwind CSS)
+│   └── index.html      # Frontend (Tailwind CSS)
 ├── requirements.txt
-├── data/                # Created by fetch_tmdb.py (gitignored)
-│   ├── tmdb_movies.csv
-│   └── genre_list.json
-└── artifacts/           # Created by pipeline.py (gitignored)
+├── data/               # gitignored, created by fetch_tmdb.py
+└── artifacts/          # gitignored, created by pipeline.py
 ```
 
 ---
 
 ## Notes
 
-- `data/` and `artifacts/` are gitignored — run the setup steps above to regenerate them
-- TMDB API has a rate limit of 40 requests/10s on the free tier; `fetch_tmdb.py` stays well within this
-- Poster images are served directly from TMDB's CDN — no storage needed
+- `data/` and `artifacts/` are gitignored. Run steps 3 and 4 after cloning.
+- TMDB free tier allows 40 requests/10s. The fetch script stays within that.
+- Poster images load directly from TMDB's CDN.
